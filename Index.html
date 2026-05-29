@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR承認システム</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; background-color: #f4f4f4;}
+    #video { width: 100%; max-width: 400px; border: 4px solid #4CAF50; border-radius: 8px; background-color: #000; display: none; }
+    #canvas { display: none; }
+    #message { margin-top: 20px; font-weight: bold; font-size: 1.2em; color: #333; }
+    .loader { display: none; margin: 20px auto; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    #start-btn { background-color: #4CAF50; color: white; border: none; padding: 15px 30px; font-size: 1.2em; border-radius: 8px; cursor: pointer; margin-top: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <h2>電子承認スキャン</h2>
+  <p>名札のQRコードを読み取ります</p>
+  
+  <button id="start-btn">📸 カメラを起動する</button>
+  
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+  
+  <div id="loader" class="loader"></div>
+  <div id="message">ボタンを押してカメラを起動してください</div>
+
+  <script>
+    // ★★★ここにPhase 1で控えたGASのURLを貼り付けます★★★
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwY0B_xou02TFyXRPYF3rDFUBJxfXKLJ4Gc7vyVZuNvEZUxkZCyJPtcwmrD32PW3QkP/exec";
+
+    const video = document.getElementById("video");
+    const canvasElement = document.getElementById("canvas");
+    const canvas = canvasElement.getContext("2d", { willReadFrequently: true });
+    const messageElement = document.getElementById("message");
+    const loaderElement = document.getElementById("loader");
+    const startBtn = document.getElementById("start-btn");
+    
+    let isScanning = false;
+
+    // カメラ起動
+    startBtn.addEventListener("click", function() {
+      messageElement.style.color = "#333";
+      messageElement.innerText = "カメラの許可を確認しています...";
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        messageElement.style.color = "red";
+        messageElement.innerText = "このブラウザはカメラ機能をサポートしていません。";
+        return;
+      }
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .catch(function() {
+          return navigator.mediaDevices.getUserMedia({ video: true });
+        })
+        .then(function(stream) {
+          startBtn.style.display = "none";
+          video.style.display = "inline-block";
+          video.srcObject = stream;
+          video.setAttribute("playsinline", true); 
+          video.play();
+          
+          isScanning = true;
+          messageElement.innerText = "QRコードを枠内に映してください";
+          requestAnimationFrame(tick);
+        })
+        .catch(function(err) {
+          messageElement.style.color = "red";
+          messageElement.innerText = "カメラ起動エラー: " + err.name + "\n詳細: " + err.message;
+        });
+    });
+
+    // QR読み取り処理
+    function tick() {
+      if (!isScanning) return;
+      
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvasElement.height = video.videoHeight;
+        canvasElement.width = video.videoWidth;
+        canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+        
+        var imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+        var code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert",
+        });
+        
+        if (code && code.data) {
+          isScanning = false;
+          video.pause();
+          messageElement.style.color = "#333";
+          messageElement.innerText = "読み取り成功！データを送信中...";
+          loaderElement.style.display = "block";
+          
+          // GASのAPIに向かってデータを送信（CORS回避のため text/plain で送信）
+          fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({ qrText: code.data }),
+            headers: { "Content-Type": "text/plain" }
+          })
+          .then(response => response.json())
+          .then(result => {
+            loaderElement.style.display = "none";
+            if (result.success) {
+              messageElement.style.color = "green";
+              messageElement.innerText = result.message + "\n画面を閉じてスプレッドシートに戻ってください。";
+            } else {
+              messageElement.style.color = "red";
+              messageElement.innerText = "エラー: " + result.message + "\n画面を更新してやり直してください。";
+            }
+          })
+          .catch(error => {
+            loaderElement.style.display = "none";
+            messageElement.style.color = "red";
+            messageElement.innerText = "通信エラーが発生しました。\n画面を更新してやり直してください。";
+          });
+        }
+      }
+      if (isScanning) {
+        requestAnimationFrame(tick);
+      }
+    }
+  </script>
+</body>
+</html>
