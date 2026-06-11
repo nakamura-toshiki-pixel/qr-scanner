@@ -48,7 +48,6 @@
       margin-bottom: 10px;
       color: #34495e;
     }
-    /* 動的ボタンのスタイル */
     #button-container {
       display: flex;
       flex-direction: column;
@@ -131,21 +130,18 @@
 </div>
 
 <script>
-  // ==========================================
-  // 【最重要】中村様の本番用GASウェブアプリURLをここに貼り付け
-  // ==========================================
+  // 中村様の本番用GASのURLを設定済みです
   const GAS_URL = "https://script.google.com/macros/s/AKfycbweVc3Sm0YA0Gbrfm5ekaTdxoB5Ud0pgpayN7YK28b25VVLy5ZDA6StpcyoCJ3hbatjEA/exec";
 
-  // URLの末尾から「どのシートか」のパラメータを取得 (?sheet=段取チェックシート① など)
   const urlParams = new URLSearchParams(window.location.search);
-  let sheetName = urlParams.get('sheet') || "段取チェックシート①"; // 省略時は①にする
+  let sheetName = urlParams.get('sheet') || "段取チェックシート①"; 
   
   document.getElementById('sheet-display').innerText = `現在の操作対象: ${sheetName}`;
   
-  let selectedTarget = ""; // 職制が選んだ承認位置の文字を記憶する変数
-  let html5QrcodeScanner = null;
+  let selectedTarget = ""; 
+  let html5Qrcode = null; // お試し版と同様、自由度の高いhtml5Qrcodeクラスを使用します
 
-  // 画面起動時に、GASに「承認ボタンのリスト」を貰いに行く処理
+  // 画面起動時にボタンのリストを取得
   window.addEventListener('DOMContentLoaded', () => {
     fetch(`${GAS_URL}?action=getButtons&sheet=${encodeURIComponent(sheetName)}`)
       .then(response => response.json())
@@ -154,7 +150,6 @@
         const container = document.getElementById('button-container');
         
         if (data.success && data.targets.length > 0) {
-          // GASから届いた「職制印」の文字リストを元に、ボタンを動的に作成
           data.targets.forEach((targetText, index) => {
             const btn = document.createElement('button');
             btn.className = 'target-btn';
@@ -163,7 +158,7 @@
             container.appendChild(btn);
           });
         } else {
-          document.getElementById('loading').innerText = "承認項目が見つかりませんでした。シートを確認してください。";
+          document.getElementById('loading').innerText = "承認項目が見つかりませんでした。シートに「職制印」の文字があるか確認してください。";
         }
       })
       .catch(err => {
@@ -173,50 +168,63 @@
       });
   });
 
-  // ボタンがタップされた時の処理
+  // ボタン選択時
   function selectTarget(element, targetText) {
-    // 他のボタンの選択状態を解除
     document.querySelectorAll('.target-btn').forEach(btn => btn.classList.remove('selected'));
-    // タップされたボタンをONにする
     element.classList.add('selected');
     selectedTarget = targetText;
     
-    // ボタンが選ばれたら、初めてカメラを起動する
+    // 選択されたら即座にカメラを起動
     startCamera();
   }
 
-  // カメラを起動する処理
+  // カメラを「背面優先」で即座に起動する処理
   function startCamera() {
     const readerDiv = document.getElementById('reader');
     readerDiv.style.display = 'block';
     
-    if (html5QrcodeScanner) {
-      return; // 既に起動してれば何もしない
-    }
+    if (html5Qrcode) return; // 既に起動してればスキップ
     
-    html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
-      fps: 10, 
-      qrbox: { width: 250, height: 250 },
-      rememberLastUsedCamera: true
-    });
+    html5Qrcode = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
-    html5QrcodeScanner.render(onScanSuccess);
+    // ★お試し版と同様：まずは背面カメラ（environment）を試みる
+    html5Qrcode.start({ facingMode: "environment" }, config, onScanSuccess)
+      .catch(err => {
+        console.log("背面カメラがない、またはエラーのため前面カメラを試みます:", err);
+        // 背面がダメなら前面カメラ（user）で起動
+        html5Qrcode.start({ facingMode: "user" }, config, onScanSuccess)
+          .catch(e => {
+            showStatus("カメラの起動に失敗しました。ブラウザのカメラ権限を許可してください。", "error");
+          });
+      });
   }
 
-  // QRコードの読み取りに成功した時の処理
+  // スキャン成功時
   function onScanSuccess(decodedText, decodedResult) {
-    // 読み取り成功したら一度カメラのシークを止める（連続送信防止）
-    html5QrcodeScanner.clear();
-    html5QrcodeScanner = null;
-    document.getElementById('reader').style.display = 'none';
-    
+    // 送信前にカメラを止めて画面をスッキリさせる
+    if (html5Qrcode) {
+      html5Qrcode.stop().then(() => {
+        html5Qrcode = null;
+        document.getElementById('reader').style.display = 'none';
+        sendData(decodedText);
+      }).catch(err => {
+        console.error("カメラの停止に失敗:", err);
+        sendData(decodedText);
+      });
+    } else {
+      sendData(decodedText);
+    }
+  }
+
+  // サーバーへの送信処理
+  function sendData(qrText) {
     showStatus("サーバーへ送信中...", "");
 
-    // GASのdoPostへデータを送信
     fetch(GAS_URL, {
       method: "POST",
       body: JSON.stringify({
-        qrText: decodedText,
+        qrText: qrText,
         sheetName: sheetName,
         targetText: selectedTarget
       })
@@ -227,8 +235,7 @@
         showStatus(data.message, "success");
       } else {
         showStatus("エラー: " + data.message, "error");
-        // 失敗した場合は、ボタンの選択状態を維持してカメラを再起動できるようにする
-        setTimeout(() => startCamera(), 2000);
+        setTimeout(() => startCamera(), 2000); // 失敗時は2秒後にカメラ再起動
       }
     })
     .catch(err => {
@@ -237,7 +244,6 @@
     });
   }
 
-  // 画面に成否のメッセージを表示する補助機能
   function showStatus(msg, className) {
     const statusDiv = document.getElementById('status');
     statusDiv.style.display = 'block';
