@@ -178,7 +178,7 @@
     startCamera();
   }
 
-  // カメラを「背面優先」で即座に起動する処理
+  // カメラを「前面（インナー）優先」で即座に起動する処理
   function startCamera() {
     const readerDiv = document.getElementById('reader');
     readerDiv.style.display = 'block';
@@ -188,12 +188,12 @@
     html5Qrcode = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
-    // ★お試し版と同様：まずは背面カメラ（environment）を試みる
-    html5Qrcode.start({ facingMode: "environment" }, config, onScanSuccess)
+    // ★修正点：まずは前面カメラ（user）を試みる
+    html5Qrcode.start({ facingMode: "user" }, config, onScanSuccess)
       .catch(err => {
-        console.log("背面カメラがない、またはエラーのため前面カメラを試みます:", err);
-        // 背面がダメなら前面カメラ（user）で起動
-        html5Qrcode.start({ facingMode: "user" }, config, onScanSuccess)
+        console.log("前面カメラがない、またはエラーのため背面カメラを試みます:", err);
+        // 前面がダメなら背面カメラ（environment）で起動
+        html5Qrcode.start({ facingMode: "environment" }, config, onScanSuccess)
           .catch(e => {
             showStatus("カメラの起動に失敗しました。ブラウザのカメラ権限を許可してください。", "error");
           });
