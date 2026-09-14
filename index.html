@@ -130,11 +130,15 @@
 </div>
 
 <script>
-  // 中村様の本番用GASのURLを設定済みです
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbweVc3Sm0YA0Gbrfm5ekaTdxoB5Ud0pgpayN7YK28b25VVLy5ZDA6StpcyoCJ3hbatjEA/exec";
-
+  // どのスプシからQRスキャナーを開いても正確に返せるような仕組み
   const urlParams = new URLSearchParams(window.location.search);
-  let sheetName = urlParams.get('sheet') || "段取チェックシート①"; 
+
+  // デフォルト（指定がない場合）の面取工程用GAS URL
+  const defaultGasUrl = "https://script.google.com/macros/s/AKfycbweVc3Sm0YA0Gbrfm5ekaTdxoB5Ud0pgpayN7YK28b25VVLy5ZDA6StpcyoCJ3hbatjEA/exec";
+
+  // URLに「?gas=新しいGASのURL」が付いていればそれを優先使用し、なければデフォルトを使用
+  const GAS_URL = urlParams.get('gas') || defaultGasUrl;
+  let sheetName = urlParams.get('sheet') || "段取チェックシート①";
   
   document.getElementById('sheet-display').innerText = `現在の操作対象: ${sheetName}`;
   
