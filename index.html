@@ -1,160 +1,261 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QR承認カメラ</title>
-<script src="https://unpkg.com/html5-qrcode"></script>
-<style>
-  body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-color: #f4f6f9;
-    margin: 0;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: #333;
-  }
-  .container {
-    max-width: 400px;
-    width: 100%;
-    background: #fff;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-    box-sizing: border-box;
-    text-align: center;
-  }
-  #reader {
-    width: 100%;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid #e2e8f0;
-    margin-top: 15px;
-  }
-  #status {
-    margin-top: 15px;
-    padding: 12px;
-    border-radius: 6px;
-    font-weight: bold;
-    min-height: 24px;
-  }
-  .btn-switch {
-    margin-top: 15px;
-    padding: 10px 20px;
-    background-color: #4a90e2;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-size: 14px;
-    cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  }
-  .btn-switch:active {
-    transform: scale(0.95);
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>面取工程 段取承認カメラ</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #333;
+    }
+    .container {
+      max-width: 500px;
+      width: 100%;
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+      box-sizing: border-box;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 0;
+      color: #2c3e50;
+      font-size: 22px;
+      border-bottom: 2px solid #eef2f5;
+      padding-bottom: 15px;
+    }
+    .info-box {
+      background-color: #e8f4fd;
+      border-left: 4px solid #3498db;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #34495e;
+    }
+    #button-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 25px;
+    }
+    .target-btn {
+      padding: 14px;
+      font-size: 16px;
+      font-weight: bold;
+      background-color: #fff;
+      border: 2px solid #cbd5e1;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+    }
+    .target-btn:hover {
+      background-color: #f8fafc;
+    }
+    .target-btn.selected {
+      background-color: #ebf5ff;
+      border-color: #3b82f6;
+      color: #2563eb;
+      box-shadow: 0 0 0 1px #3b82f6;
+    }
+    .target-btn::before {
+      content: "○";
+      margin-right: 12px;
+      font-size: 18px;
+      color: #94a3b8;
+    }
+    .target-btn.selected::before {
+      content: "●";
+      color: #3b82f6;
+    }
+    #reader {
+      width: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      display: none;
+    }
+    #loading {
+      text-align: center;
+      padding: 20px;
+      color: #64748b;
+      font-size: 15px;
+    }
+    #status {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 15px;
+      display: none;
+    }
+    .success { background-color: #dcfce7; color: #15803d; }
+    .error { background-color: #fee2e2; color: #b91c1c; }
+  </style>
 </head>
 <body>
 
 <div class="container">
-  <h2>QRコードをかざしてください</h2>
+  <h2>面取工程 段取承認</h2>
+  
+  <div class="info-box" id="sheet-display">対象シートを読み込み中...</div>
+  
+  <div class="section-title">1. ハンコを押す場所を選択してください</div>
+  <div id="loading">スプレッドシートから承認項目を取得しています...</div>
+  <div id="button-container"></div>
+  
+  <div class="section-title">2. QRコードをかざしてください</div>
   <div id="reader"></div>
+  
   <div id="status"></div>
-  <button class="btn-switch" onclick="switchCamera()">🔄 カメラ切替</button>
 </div>
 
 <script>
-  let html5Qrcode = null;
-  let currentFacingMode = "user"; // デフォルトは内カメラ
-  let isProcessing = false;       // 連続スキャン防止フラグ
+  // どのスプシからQRスキャナーを開いても正確に返せるような仕組み
+  const urlParams = new URLSearchParams(window.location.search);
 
+  // デフォルト（指定がない場合）の面取工程用GAS URL
+  const defaultGasUrl = "https://script.google.com/macros/s/AKfycbweVc3Sm0YA0Gbrfm5ekaTdxoB5Ud0pgpayN7YK28b25VVLy5ZDA6StpcyoCJ3hbatjEA/exec";
+
+  // URLに「?gas=新しいGASのURL」が付いていればそれを優先使用し、なければデフォルトを使用
+  const GAS_URL = urlParams.get('gas') || defaultGasUrl;
+  let sheetName = urlParams.get('sheet') || "段取チェックシート①";
+  
+  document.getElementById('sheet-display').innerText = `現在の操作対象: ${sheetName}`;
+  
+  let selectedTarget = ""; 
+  let html5Qrcode = null; // お試し版と同様、自由度の高いhtml5Qrcodeクラスを使用します
+
+  // 画面起動時にボタンのリストを取得
   window.addEventListener('DOMContentLoaded', () => {
-    startCamera(currentFacingMode);
+    fetch(`GASURL?action=getButtons&sheet={encodeURIComponent(sheetName)}`)
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('loading').style.display = 'none';
+        const container = document.getElementById('button-container');
+        
+        if (data.success && data.targets.length > 0) {
+          data.targets.forEach((targetText, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'target-btn';
+            btn.innerText = targetText;
+            btn.onclick = () => selectTarget(btn, targetText);
+            container.appendChild(btn);
+          });
+        } else {
+          document.getElementById('loading').innerText = "承認項目が見つかりませんでした。シートに「職制印」の文字があるか確認してください。";
+        }
+      })
+      .catch(err => {
+        document.getElementById('loading').className = "error";
+        document.getElementById('loading').innerText = "エラー: スプレッドシートとの通信に失敗しました。";
+        console.error(err);
+      });
   });
 
-  function startCamera(facingMode) {
-    if (html5Qrcode) {
-      html5Qrcode.stop().then(() => {
-        html5Qrcode = null;
-        initScanner(facingMode);
-      }).catch(err => {
-        console.error(err);
-        initScanner(facingMode);
-      });
-    } else {
-      initScanner(facingMode);
-    }
+  // ボタン選択時
+  function selectTarget(element, targetText) {
+    document.querySelectorAll('.target-btn').forEach(btn => btn.classList.remove('selected'));
+    element.classList.add('selected');
+    selectedTarget = targetText;
+    
+    // 選択されたら即座にカメラを起動
+    startCamera();
   }
 
-  function initScanner(facingMode) {
+  // カメラを「前面（インナー）優先」で即座に起動する処理
+  function startCamera() {
+    const readerDiv = document.getElementById('reader');
+    readerDiv.style.display = 'block';
+    
+    if (html5Qrcode) return; // 既に起動してればスキップ
+    
     html5Qrcode = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
-    html5Qrcode.start({ facingMode: facingMode }, config, onScanSuccess)
+    // ★修正点：まずは前面カメラ（user）を試みる
+    html5Qrcode.start({ facingMode: "user" }, config, onScanSuccess)
       .catch(err => {
-        document.getElementById('status').innerText = "カメラの起動に失敗しました。";
-        document.getElementById('status').style.color = "#b91c1c";
+        console.log("前面カメラがない、またはエラーのため背面カメラを試みます:", err);
+        // 前面がダメなら背面カメラ（environment）で起動
+        html5Qrcode.start({ facingMode: "environment" }, config, onScanSuccess)
+          .catch(e => {
+            showStatus("カメラの起動に失敗しました。ブラウザのカメラ権限を許可してください。", "error");
+          });
       });
   }
 
-  // ★ カメラ切り替え処理
-  function switchCamera() {
-    currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
-    startCamera(currentFacingMode);
-  }
-
-  // ★ QR読み取り成功時
-  function onScanSuccess(decodedText) {
-    if (isProcessing) return; // 処理中は次のスキャンを無視する
-    isProcessing = true;
-    
-    document.getElementById('status').innerText = "照合中...";
-    document.getElementById('status').style.color = "#15803d";
-    
-    sendDataToParent(decodedText);
-  }
-
-  function sendDataToParent(qrText) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const targetCellId = urlParams.get('target'); 
-
-    if (window.opener) {
-      // GASの親画面に「QR読み取ったよ！」と送信する
-      window.opener.postMessage({
-        type: 'QR_SCANNED',
-        target: targetCellId,
-        qrData: qrText
-      }, "*");
+  // スキャン成功時
+  function onScanSuccess(decodedText, decodedResult) {
+    // 送信前にカメラを止めて画面をスッキリさせる
+    if (html5Qrcode) {
+      html5Qrcode.stop().then(() => {
+        html5Qrcode = null;
+        document.getElementById('reader').style.display = 'none';
+        sendData(decodedText);
+      }).catch(err => {
+        console.error("カメラの停止に失敗:", err);
+        sendData(decodedText);
+      });
     } else {
-      document.getElementById('status').innerText = "エラー：元の画面が見つかりません。";
-      document.getElementById('status').style.color = "#b91c1c";
+      sendData(decodedText);
     }
   }
 
-  // ★ GASの親画面からの「照合結果」を受け取る
-  window.addEventListener('message', function(event) {
-    const data = event.data;
-    if (data && data.type === 'QR_RESULT') {
-      
-      if (data.status === 'success') {
-        // 照合OK：画面を閉じる
-        window.close();
+  // サーバーへの送信処理
+  function sendData(qrText) {
+    showStatus("サーバーへ送信中...", "");
+
+    fetch(GAS_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        qrText: qrText,
+        sheetName: sheetName,
+        targetText: selectedTarget
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showStatus(data.message, "success");
       } else {
-        // 照合NG：「照合できません」と表示して2秒後に再開
-        const statusEl = document.getElementById('status');
-        statusEl.innerText = data.message || "照合できません";
-        statusEl.style.color = "#b91c1c";
-        
-        setTimeout(() => {
-          statusEl.innerText = "";
-          isProcessing = false; // 再スキャンを許可
-        }, 2000);
+        showStatus("エラー: " + data.message, "error");
+        setTimeout(() => startCamera(), 2000); // 失敗時は2秒後にカメラ再起動
       }
-    }
-  });
+    })
+    .catch(err => {
+      showStatus("通信エラーが発生しました。", "error");
+      setTimeout(() => startCamera(), 2000);
+    });
+  }
+
+  function showStatus(msg, className) {
+    const statusDiv = document.getElementById('status');
+    statusDiv.style.display = 'block';
+    statusDiv.innerText = msg;
+    statusDiv.className = className;
+  }
 </script>
 
 </body>
 </html>
+
