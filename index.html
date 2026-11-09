@@ -147,7 +147,7 @@
 
   // 画面起動時にボタンのリストを取得
   window.addEventListener('DOMContentLoaded', () => {
-    fetch(`GASURL?action=getButtons&sheet={encodeURIComponent(sheetName)}`)
+    fetch(`${GAS_URL}?action=getButtons&sheet=${encodeURIComponent(sheetName)}`)
       .then(response => response.json())
       .then(data => {
         document.getElementById('loading').style.display = 'none';
