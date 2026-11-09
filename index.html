@@ -38,7 +38,21 @@
     padding: 12px;
     border-radius: 6px;
     font-weight: bold;
-    color: #b91c1c;
+    min-height: 24px;
+  }
+  .btn-switch {
+    margin-top: 15px;
+    padding: 10px 20px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .btn-switch:active {
+    transform: scale(0.95);
   }
 </style>
 </head>
@@ -48,67 +62,98 @@
   <h2>QRコードをかざしてください</h2>
   <div id="reader"></div>
   <div id="status"></div>
+  <button class="btn-switch" onclick="switchCamera()">🔄 カメラ切替</button>
 </div>
 
 <script>
   let html5Qrcode = null;
+  let currentFacingMode = "user"; // デフォルトは内カメラ
+  let isProcessing = false;       // 連続スキャン防止フラグ
 
-  // 画面が開いたら即座にカメラを起動する
   window.addEventListener('DOMContentLoaded', () => {
-    startCamera();
+    startCamera(currentFacingMode);
   });
 
-  function startCamera() {
-    if (html5Qrcode) return;
+  function startCamera(facingMode) {
+    if (html5Qrcode) {
+      html5Qrcode.stop().then(() => {
+        html5Qrcode = null;
+        initScanner(facingMode);
+      }).catch(err => {
+        console.error(err);
+        initScanner(facingMode);
+      });
+    } else {
+      initScanner(facingMode);
+    }
+  }
+
+  function initScanner(facingMode) {
     html5Qrcode = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
-    // まず前面カメラを試み、ダメなら背面カメラを起動
-    html5Qrcode.start({ facingMode: "user" }, config, onScanSuccess)
+    html5Qrcode.start({ facingMode: facingMode }, config, onScanSuccess)
       .catch(err => {
-        console.log("前面カメラ失敗、背面カメラを試みます:", err);
-        html5Qrcode.start({ facingMode: "environment" }, config, onScanSuccess)
-          .catch(e => {
-            document.getElementById('status').innerText = "カメラの起動に失敗しました。ブラウザのカメラ権限を許可してください。";
-          });
+        document.getElementById('status').innerText = "カメラの起動に失敗しました。";
+        document.getElementById('status').style.color = "#b91c1c";
       });
   }
 
-  // スキャン成功時
+  // ★ カメラ切り替え処理
+  function switchCamera() {
+    currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+    startCamera(currentFacingMode);
+  }
+
+  // ★ QR読み取り成功時
   function onScanSuccess(decodedText) {
-    if (html5Qrcode) {
-      // カメラを停止してから親画面にデータを送る
-      html5Qrcode.stop().then(() => {
-        html5Qrcode = null;
-        document.getElementById('reader').style.display = 'none';
-        sendDataToParent(decodedText);
-      }).catch(err => {
-        sendDataToParent(decodedText);
-      });
-    } else {
-      sendDataToParent(decodedText);
-    }
+    if (isProcessing) return; // 処理中は次のスキャンを無視する
+    isProcessing = true;
+    
+    document.getElementById('status').innerText = "照合中...";
+    document.getElementById('status').style.color = "#15803d";
+    
+    sendDataToParent(decodedText);
   }
 
-  // 親ウィンドウ（GASのチェックシート画面）へデータを送る処理
   function sendDataToParent(qrText) {
     const urlParams = new URLSearchParams(window.location.search);
-    const targetCellId = urlParams.get('target'); // GASから渡された「cell_8_10」などの住所
+    const targetCellId = urlParams.get('target'); 
 
     if (window.opener) {
-      // 親画面にメッセージ送信
+      // GASの親画面に「QR読み取ったよ！」と送信する
       window.opener.postMessage({
-        type: 'QR_SUCCESS',
+        type: 'QR_SCANNED',
         target: targetCellId,
         qrData: qrText
       }, "*");
-      
-      // 送信完了後、このポップアップ（カメラ画面）を自動で閉じる
-      window.close();
     } else {
-      document.getElementById('status').innerText = "エラー：元の画面が見つかりません。チェックシートの画面から再度やり直してください。";
+      document.getElementById('status').innerText = "エラー：元の画面が見つかりません。";
+      document.getElementById('status').style.color = "#b91c1c";
     }
   }
+
+  // ★ GASの親画面からの「照合結果」を受け取る
+  window.addEventListener('message', function(event) {
+    const data = event.data;
+    if (data && data.type === 'QR_RESULT') {
+      
+      if (data.status === 'success') {
+        // 照合OK：画面を閉じる
+        window.close();
+      } else {
+        // 照合NG：「照合できません」と表示して2秒後に再開
+        const statusEl = document.getElementById('status');
+        statusEl.innerText = data.message || "照合できません";
+        statusEl.style.color = "#b91c1c";
+        
+        setTimeout(() => {
+          statusEl.innerText = "";
+          isProcessing = false; // 再スキャンを許可
+        }, 2000);
+      }
+    }
+  });
 </script>
 
 </body>
