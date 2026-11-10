@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR承認カメラ</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #f4f6f9;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #333;
+  }
+  .container {
+    max-width: 400px;
+    width: 100%;
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-sizing: border-box;
+    text-align: center;
+  }
+  #reader {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    margin-top: 15px;
+  }
+  #status {
+    margin-top: 15px;
+    padding: 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    min-height: 24px;
+  }
+  .btn-switch {
+    margin-top: 15px;
+    padding: 10px 20px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .btn-switch:active {
+    transform: scale(0.95);
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h2>QRコードをかざしてください</h2>
+  <div id="reader"></div>
+  <div id="status"></div>
+  <button class="btn-switch" onclick="switchCamera()">🔄 カメラ切替</button>
+</div>
+
+<script>
+  let html5Qrcode = null;
+  let currentFacingMode = "user"; // デフォルトは内カメラ
+  let isProcessing = false;       // 連続スキャン防止フラグ
+
+  window.addEventListener('DOMContentLoaded', () => {
+    startCamera(currentFacingMode);
+  });
+
+  function startCamera(facingMode) {
+    if (html5Qrcode) {
+      html5Qrcode.stop().then(() => {
+        html5Qrcode = null;
+        initScanner(facingMode);
+      }).catch(err => {
+        console.error(err);
+        initScanner(facingMode);
+      });
+    } else {
+      initScanner(facingMode);
+    }
+  }
+
+  function initScanner(facingMode) {
+    html5Qrcode = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    
+    html5Qrcode.start({ facingMode: facingMode }, config, onScanSuccess)
+      .catch(err => {
+        document.getElementById('status').innerText = "カメラの起動に失敗しました。";
+        document.getElementById('status').style.color = "#b91c1c";
+      });
+  }
+
+  // ★ カメラ切り替え処理
+  function switchCamera() {
+    currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+    startCamera(currentFacingMode);
+  }
+
+  // ★ QR読み取り成功時
+  function onScanSuccess(decodedText) {
+    if (isProcessing) return; // 処理中は次のスキャンを無視する
+    isProcessing = true;
+    
+    document.getElementById('status').innerText = "照合中...";
+    document.getElementById('status').style.color = "#15803d";
+    
+    sendDataToParent(decodedText);
+  }
+
+  function sendDataToParent(qrText) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetCellId = urlParams.get('target'); 
+
+    if (window.opener) {
+      // GASの親画面に「QR読み取ったよ！」と送信する
+      window.opener.postMessage({
+        type: 'QR_SCANNED',
+        target: targetCellId,
+        qrData: qrText
+      }, "*");
+    } else {
+      document.getElementById('status').innerText = "エラー：元の画面が見つかりません。";
+      document.getElementById('status').style.color = "#b91c1c";
+    }
+  }
+
+  // ★ GASの親画面からの「照合結果」を受け取る
+  window.addEventListener('message', function(event) {
+    const data = event.data;
+    if (data && data.type === 'QR_RESULT') {
+      
+      if (data.status === 'success') {
+        // 照合OK：画面を閉じる
+        window.close();
+      } else {
+        // 照合NG：「照合できません」と表示して2秒後に再開
+        const statusEl = document.getElementById('status');
+        statusEl.innerText = data.message || "照合できません";
+        statusEl.style.color = "#b91c1c";
+        
+        setTimeout(() => {
+          statusEl.innerText = "";
+          isProcessing = false; // 再スキャンを許可
+        }, 2000);
+      }
+    }
+  });
+</script>
+
+</body>
+</html>
+
+
